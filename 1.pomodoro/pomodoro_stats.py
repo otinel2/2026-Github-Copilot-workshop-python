@@ -81,6 +81,40 @@ def get_monthly_stats(data: Dict[str, Any], months: int = 6) -> Dict[str, Dict]:
     return stats
 
 
+def get_achievement_rate(data: Dict[str, Any], days: int = 7) -> float:
+    """Return the fraction of the last *days* days that had at least one pomodoro.
+
+    Returns a float in [0.0, 1.0].
+    """
+    today = date.today()
+    active_days = 0
+    history_by_date = {e["date"]: e for e in data.get("history", [])}
+    for i in range(days):
+        d = (today - timedelta(days=i)).isoformat()
+        if history_by_date.get(d, {}).get("pomodoros", 0) >= 1:
+            active_days += 1
+    return active_days / days if days > 0 else 0.0
+
+
+def get_avg_focus_minutes(data: Dict[str, Any], days: int = 7) -> float:
+    """Return the average daily focus minutes over the last *days* days.
+
+    Only days that had at least one pomodoro are included in the average.
+    Returns 0.0 if no pomodoros were recorded in the period.
+    """
+    today = date.today()
+    total_minutes = 0
+    active_days = 0
+    history_by_date = {e["date"]: e for e in data.get("history", [])}
+    for i in range(days):
+        d = (today - timedelta(days=i)).isoformat()
+        entry = history_by_date.get(d)
+        if entry and entry.get("pomodoros", 0) >= 1:
+            total_minutes += entry.get("focus_minutes", 0)
+            active_days += 1
+    return total_minutes / active_days if active_days > 0 else 0.0
+
+
 # ---------------------------------------------------------------------------
 # Graph rendering (requires matplotlib)
 # ---------------------------------------------------------------------------
@@ -112,7 +146,7 @@ def _configure_japanese_font() -> None:
 
 
 def show_statistics_window(data: Dict[str, Any]) -> None:
-    """Display a matplotlib window with daily and weekly bar charts."""
+    """Display a matplotlib window with daily, weekly, monthly, and focus-time charts."""
     try:
         import matplotlib.pyplot as plt
         import matplotlib
@@ -130,13 +164,27 @@ def show_statistics_window(data: Dict[str, Any]) -> None:
 
     daily = get_daily_stats(data, days=7)
     weekly = get_weekly_stats(data, weeks=4)
+    monthly = get_monthly_stats(data, months=6)
+    achievement_rate = get_achievement_rate(data, days=7)
+    avg_focus = get_avg_focus_minutes(data, days=7)
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
     fig.patch.set_facecolor("#2c3e50")
-    fig.suptitle("ポモドーロ統計", fontsize=16, fontweight="bold", color="white")
+
+    subtitle = (
+        f"直近7日間の達成率: {achievement_rate * 100:.0f}%  |  "
+        f"1日平均集中時間: {avg_focus:.0f}分"
+    )
+    fig.suptitle(
+        f"ポモドーロ統計\n{subtitle}",
+        fontsize=14,
+        fontweight="bold",
+        color="white",
+        linespacing=1.8,
+    )
 
     _draw_bar_chart(
-        axes[0],
+        axes[0][0],
         labels=list(daily.keys()),
         values=[daily[k]["pomodoros"] for k in daily],
         title="過去7日間のポモドーロ数",
@@ -145,7 +193,7 @@ def show_statistics_window(data: Dict[str, Any]) -> None:
     )
 
     _draw_bar_chart(
-        axes[1],
+        axes[0][1],
         labels=list(weekly.keys()),
         values=[weekly[k]["pomodoros"] for k in weekly],
         title="過去4週間のポモドーロ数",
@@ -153,16 +201,35 @@ def show_statistics_window(data: Dict[str, Any]) -> None:
         bar_color="#3498db",
     )
 
-    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    _draw_bar_chart(
+        axes[1][0],
+        labels=list(monthly.keys()),
+        values=[monthly[k]["pomodoros"] for k in monthly],
+        title="過去6ヶ月間のポモドーロ数",
+        xlabel="月",
+        bar_color="#9b59b6",
+    )
+
+    _draw_bar_chart(
+        axes[1][1],
+        labels=list(daily.keys()),
+        values=[daily[k]["focus_minutes"] for k in daily],
+        title="過去7日間の集中時間（分）",
+        xlabel="日付",
+        ylabel="集中時間（分）",
+        bar_color="#f39c12",
+    )
+
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
     plt.show()
 
 
-def _draw_bar_chart(ax, labels, values, title, xlabel, bar_color):
+def _draw_bar_chart(ax, labels, values, title, xlabel, bar_color, ylabel="ポモドーロ数"):
     ax.set_facecolor("#34495e")
     bars = ax.bar(labels, values, color=bar_color, alpha=0.85, zorder=3)
     ax.set_title(title, color="white", fontsize=12)
     ax.set_xlabel(xlabel, color="#bdc3c7")
-    ax.set_ylabel("ポモドーロ数", color="#bdc3c7")
+    ax.set_ylabel(ylabel, color="#bdc3c7")
     ax.set_ylim(0, max(list(values) + [1]) + 1)
     ax.tick_params(colors="#bdc3c7", axis="both")
     ax.spines[:].set_color("#4a5f72")

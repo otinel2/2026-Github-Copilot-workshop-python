@@ -8,7 +8,13 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from pomodoro_stats import get_daily_stats, get_weekly_stats, get_monthly_stats
+from pomodoro_stats import (
+    get_achievement_rate,
+    get_avg_focus_minutes,
+    get_daily_stats,
+    get_monthly_stats,
+    get_weekly_stats,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -132,3 +138,82 @@ class TestGetMonthlyStats:
         stats = get_monthly_stats(data)
         this_month = f"{date.today().year}/{date.today().month:02d}"
         assert stats[this_month]["pomodoros"] == 4
+
+
+# ---------------------------------------------------------------------------
+# Achievement rate
+# ---------------------------------------------------------------------------
+
+class TestGetAchievementRate:
+    def test_zero_with_no_history(self):
+        data = _make_data()
+        rate = get_achievement_rate(data, days=7)
+        assert rate == 0.0
+
+    def test_full_rate_every_day_active(self):
+        history = [
+            {"date": _days_ago(i), "pomodoros": 1, "focus_minutes": 25}
+            for i in range(7)
+        ]
+        data = _make_data(history=history)
+        rate = get_achievement_rate(data, days=7)
+        assert rate == 1.0
+
+    def test_partial_rate(self):
+        # Only today has pomodoros out of a 7-day window
+        history = [{"date": _days_ago(0), "pomodoros": 2, "focus_minutes": 50}]
+        data = _make_data(history=history)
+        rate = get_achievement_rate(data, days=7)
+        assert abs(rate - 1 / 7) < 1e-9
+
+    def test_returns_zero_for_zero_days(self):
+        data = _make_data()
+        assert get_achievement_rate(data, days=0) == 0.0
+
+    def test_old_history_not_counted(self):
+        old = _days_ago(10)
+        data = _make_data(history=[{"date": old, "pomodoros": 5, "focus_minutes": 125}])
+        rate = get_achievement_rate(data, days=7)
+        assert rate == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Average focus minutes
+# ---------------------------------------------------------------------------
+
+class TestGetAvgFocusMinutes:
+    def test_zero_with_no_history(self):
+        data = _make_data()
+        avg = get_avg_focus_minutes(data, days=7)
+        assert avg == 0.0
+
+    def test_single_active_day(self):
+        history = [{"date": _days_ago(0), "pomodoros": 2, "focus_minutes": 50}]
+        data = _make_data(history=history)
+        avg = get_avg_focus_minutes(data, days=7)
+        assert avg == 50.0
+
+    def test_average_of_two_active_days(self):
+        history = [
+            {"date": _days_ago(0), "pomodoros": 2, "focus_minutes": 50},
+            {"date": _days_ago(1), "pomodoros": 1, "focus_minutes": 25},
+        ]
+        data = _make_data(history=history)
+        avg = get_avg_focus_minutes(data, days=7)
+        assert avg == 37.5  # (50 + 25) / 2
+
+    def test_old_history_excluded(self):
+        old = _days_ago(10)
+        data = _make_data(history=[{"date": old, "pomodoros": 4, "focus_minutes": 100}])
+        avg = get_avg_focus_minutes(data, days=7)
+        assert avg == 0.0
+
+    def test_day_with_zero_pomodoros_excluded_from_avg(self):
+        # History entry with 0 pomodoros should not count towards the average
+        history = [
+            {"date": _days_ago(0), "pomodoros": 0, "focus_minutes": 0},
+            {"date": _days_ago(1), "pomodoros": 2, "focus_minutes": 50},
+        ]
+        data = _make_data(history=history)
+        avg = get_avg_focus_minutes(data, days=7)
+        assert avg == 50.0
