@@ -25,3 +25,6 @@ Thumbs.db
 
 # Flask
 instance/
+
+# Pomodoro runtime data
+1.pomodoro/pomodoro_data.json
