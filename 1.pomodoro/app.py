@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 from data_store import add_pomodoro_session, load_data, save_data
+from visual_effects import ParticleSystem, RippleEffect, progress_arc_color
 from gamification import (
     XP_PER_POMODORO,
     add_xp,
